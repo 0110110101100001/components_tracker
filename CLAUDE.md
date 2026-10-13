@@ -33,7 +33,7 @@ Sibling of `~/Desktop/token_tracker` (the Claude cost meter). The user asked for
 - CPU temp: `k10temp`/`Tctl` (AMD) or `coretemp`/`Package id 0` (Intel). This machine: Ryzen 9 9950X3D → k10temp.
 - RAM used = total − available (what "really used" means; excludes cache).
 - GPU: NVML via `nvidia-ml-py`, device 0 only (RTX 5090 here; the amdgpu iGPU is ignored). `open_gpu()` returns None and prints to stderr when NVML init fails; rows show a muted `—`.
-- Disk fill: `psutil.disk_usage(disk_mount).percent` (excludes root-reserved blocks, so it reads ~1 % lower than `df`). Disk r/w and net rates: deltas of cumulative counters over the real elapsed time; net excludes `lo`.
+- Disk fill: `psutil.disk_usage(disk_mount).percent` (excludes root-reserved blocks, so it reads ~1 % lower than `df`), followed by free space in GB (user asked 2026-10-13; `94 % · 13.1 GB free` still fits the 240 px width). Colour stays by fill %. Disk r/w and net rates: deltas of cumulative counters over the real elapsed time; net excludes `lo`.
 - Colour: `level()` per figure, `worst()` combines load and temperature for cpu/gpu rows. "plain" = no colour class (rates, power).
 
 ## Measured (2026-10-12)

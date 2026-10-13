@@ -13,7 +13,7 @@ GB = sensors.GB
 def sample(**overrides):
     base = {"cpu_load": 10.0, "core_loads": [5.0, 5.0, 5.0, 5.0], "cpu_temp": 50.0,
             "ram_used": 8 * GB, "ram_total": 64 * GB,
-            "disk_fill": 40.0, "disk_read": 0.0, "disk_write": 0.0,
+            "disk_fill": 40.0, "disk_free": 120 * GB, "disk_read": 0.0, "disk_write": 0.0,
             "net_down": 0.0, "net_up": 0.0,
             "gpu": {"load": 5, "temp": 30, "power": 32.4,
                     "vram_used": 2 * GB, "vram_total": 32 * GB}}
@@ -36,6 +36,7 @@ def test_formatters():
     assert sensors.fmt_load_temp(37.4, 61.6) == "37 % · 62 °C"
     assert sensors.fmt_load_temp(37.4, None) == "37 %"
     assert sensors.fmt_used(12.34 * GB, 62 * GB) == "12.3 / 62 GB"
+    assert sensors.fmt_fill_free(94.2, 13.3 * GB) == "94 % · 13.3 GB free"
     assert sensors.fmt_rates(1.25 * sensors.MB, 0) == "1.2 / 0.0 MB/s"
 
 

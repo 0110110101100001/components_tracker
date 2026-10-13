@@ -54,6 +54,10 @@ def fmt_used(used, total):
     return f"{used / GB:.1f} / {total / GB:.0f} GB"
 
 
+def fmt_fill_free(fill, free):
+    return f"{fill:.0f} % · {free / GB:.1f} GB free"
+
+
 def fmt_rates(first, second):
     return f"{first / MB:.1f} / {second / MB:.1f} MB/s"
 
@@ -138,13 +142,15 @@ class Sampler:
         disk_read, disk_write, net_down, net_up = rates(self.counters, counters)
         self.counters = counters
         memory = psutil.virtual_memory()
+        disk = psutil.disk_usage(self.disk_mount)
         return {
             "cpu_load": psutil.cpu_percent(),
             "core_loads": psutil.cpu_percent(percpu=True),
             "cpu_temp": cpu_temp(),
             "ram_used": memory.total - memory.available,
             "ram_total": memory.total,
-            "disk_fill": psutil.disk_usage(self.disk_mount).percent,
+            "disk_fill": disk.percent,
+            "disk_free": disk.free,
             "disk_read": disk_read,
             "disk_write": disk_write,
             "net_down": net_down,
@@ -179,7 +185,8 @@ def rows(sample, config):
         "cores": (f"{busy} / {cores}", level(100 * busy / cores, load_t)),
         "ram": (fmt_used(sample["ram_used"], sample["ram_total"]),
                 level(ram_pct, load_t)),
-        "disk": (f"{sample['disk_fill']:.0f} %", level(sample["disk_fill"], load_t)),
+        "disk": (fmt_fill_free(sample["disk_fill"], sample["disk_free"]),
+                 level(sample["disk_fill"], load_t)),
         "disk_io": (fmt_rates(sample["disk_read"], sample["disk_write"]), "plain"),
         "net": (fmt_rates(sample["net_down"], sample["net_up"]), "plain"),
     }
