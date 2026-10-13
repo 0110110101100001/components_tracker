@@ -1,0 +1,35 @@
+[workspace]
+name = "pc-monitor"
+version = "0.1.0"
+description = "Always-on-top GTK panel showing how loaded each PC component is"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.14.*"
+pygobject = ">=3.56"
+gtk3 = ">=3.24"
+adwaita-icon-theme = "*"
+librsvg = "*"                   # draws the row icons
+gsettings-desktop-schemas = "*"
+psutil = "*"
+nvidia-ml-py = "*"
+pyyaml = "*"
+pytest = "*"
+
+[activation.env]
+# The panel places and raises itself, which a pure Wayland client may not do.
+GDK_BACKEND = "x11"
+
+[tasks]
+panel = "python widget.py"                       # run the panel in the foreground (Ctrl+C to stop)
+start = "systemd-run --user --collect --quiet --unit=pc-monitor --setenv=DISPLAY --setenv=XAUTHORITY --setenv=GDK_BACKEND $PIXI_EXE run --manifest-path $PIXI_PROJECT_MANIFEST panel"  # start detached; refuses if already running
+stop = "systemctl --user stop pc-monitor"        # close a detached panel
+restart = { depends-on = ["stop", "start"] }     # stop, then start again
+smoke-test = "pytest -q tests"                   # unit tests + off-screen render of the panel
+
+# Examples:
+#   pixi run start        # open the panel, it survives closing the terminal
+#   pixi run stop
+#   pixi run panel        # foreground, to see errors
+#   pixi run smoke-test
