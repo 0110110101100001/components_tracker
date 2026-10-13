@@ -13,6 +13,8 @@ MB = 1024 ** 2
 CONFIG_PATH = Path(__file__).with_name("config.yaml")
 # Sensor chip and label of the one CPU temperature worth showing, per vendor.
 CPU_TEMP_SENSORS = (("k10temp", "Tctl"), ("coretemp", "Package id 0"))
+# Loopback interface names (Linux, Windows); their traffic never leaves the PC.
+LOOPBACK = ("lo", "Loopback Pseudo-Interface 1")
 
 
 def load_config(path=CONFIG_PATH):
@@ -57,6 +59,9 @@ def fmt_rates(first, second):
 
 
 def cpu_temp():
+    # psutil reads temperatures on Linux only; Windows exposes none without admin.
+    if not hasattr(psutil, "sensors_temperatures"):
+        return None
     readings = psutil.sensors_temperatures()
     for chip, label in CPU_TEMP_SENSORS:
         for sensor in readings.get(chip, []):
@@ -79,10 +84,17 @@ class Gpu:
             "load": pynvml.nvmlDeviceGetUtilizationRates(self.handle).gpu,
             "temp": pynvml.nvmlDeviceGetTemperature(
                 self.handle, pynvml.NVML_TEMPERATURE_GPU),
-            "power": pynvml.nvmlDeviceGetPowerUsage(self.handle) / 1000,
+            "power": self.power(),
             "vram_used": memory.used,
             "vram_total": memory.total,
         }
+
+    def power(self):
+        """Board power in W, or None where the driver does not report it (laptop GeForces)."""
+        try:
+            return pynvml.nvmlDeviceGetPowerUsage(self.handle) / 1000
+        except pynvml.NVMLError_NotSupported:
+            return None
 
 
 def open_gpu():
@@ -99,8 +111,8 @@ def io_counters():
     """(time, disk read, disk write, net down, net up), cumulative bytes."""
     disk = psutil.disk_io_counters()
     nics = psutil.net_io_counters(pernic=True)
-    down = sum(n.bytes_recv for name, n in nics.items() if name != "lo")
-    up = sum(n.bytes_sent for name, n in nics.items() if name != "lo")
+    down = sum(n.bytes_recv for name, n in nics.items() if name not in LOOPBACK)
+    up = sum(n.bytes_sent for name, n in nics.items() if name not in LOOPBACK)
     return time.monotonic(), disk.read_bytes, disk.write_bytes, down, up
 
 
@@ -137,8 +149,21 @@ class Sampler:
             "disk_write": disk_write,
             "net_down": net_down,
             "net_up": net_up,
-            "gpu": self.gpu.read() if self.gpu else None,
+            "gpu": self.read_gpu(),
         }
+
+    def read_gpu(self):
+        """GPU figures, or None for this sample when NVML cannot read them.
+
+        An Optimus laptop GPU that has powered down answers with NVML errors
+        (seen: Unknown Error); raising here would end the panel's refresh timer.
+        """
+        if self.gpu is None:
+            return None
+        try:
+            return self.gpu.read()
+        except pynvml.NVMLError:
+            return None
 
 
 def rows(sample, config):
@@ -167,6 +192,7 @@ def rows(sample, config):
         "gpu": (fmt_load_temp(gpu["load"], gpu["temp"]),
                 worst(level(gpu["load"], load_t), level(gpu["temp"], temp_t["gpu"]))),
         "vram": (fmt_used(gpu["vram_used"], gpu["vram_total"]), level(vram_pct, load_t)),
-        "gpu_power": (f"{gpu['power']:.0f} W", "plain"),
+        "gpu_power": (("—", "muted") if gpu["power"] is None
+                      else (f"{gpu['power']:.0f} W", "plain")),
     })
     return result

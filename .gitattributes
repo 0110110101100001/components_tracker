@@ -1,0 +1,3 @@
+# The repo is checked out on Linux and Windows; core.autocrlf must not decide
+# per machine. bash fails on CRLF with a bare `\r: command not found`.
+*.sh text eol=lf

@@ -8,6 +8,13 @@ Sibling of `~/Desktop/token_tracker` (the Claude cost meter). The user asked for
 - No liveness lock / pid file: `pixi run start` runs it as the transient systemd user service `pc-monitor`, and systemd refuses a second unit with the same name ("Unit pc-monitor.service was already loaded"). A service (not `--scope`) is what detaches it from the terminal's cgroup; DISPLAY, XAUTHORITY and GDK_BACKEND are passed with `--setenv` because services do not inherit the caller's environment. `pixi run panel` bypasses this (foreground, for debugging).
 - No Claude hooks, no Patrik mode/sound.
 
+## Windows support (added 2026-10-13)
+- Same approach as the token tracker: one `pixi.lock` for `linux-64` + `win-64`, `gsettings-desktop-schemas` Linux-only, `GDK_BACKEND=x11` Linux-only (`[target.linux-64.activation.env]`), the token tracker's `epoxy` build pin on win-64 (Smart App Control). `widget.py` needed no change.
+- `start`/`stop` are per-platform tasks. Windows: `winpanel.py` spawns `pythonw widget.py` with DETACHED_PROCESS (pythonw, or Windows gives the detached child a console window) and finds a running panel by command line via psutil — no pid file (Windows reuses pids). Stdout/stderr go to `data/panel.log`; `start` waits 3 s and reports a panel that died on startup.
+- sensors: no `psutil.sensors_temperatures` on Windows → CPU temp None; loopback there is `Loopback Pseudo-Interface 1`; `disk_mount: /` = current drive.
+- Test machine: i7-5600U, GeForce 840M (Optimus), 1920×1080 at 125 %. NVML works but power reads NotSupported (→ muted `—`), and a powered-down dGPU throws NVMLError_Unknown on read — that used to kill the refresh timer (an exception in a GLib timeout removes it); `Sampler.read_gpu` now blanks that sample instead.
+- No Windows autostart yet (the Linux one is `~/.bashrc`).
+
 ## Autostart (added 2026-10-12)
 - User asked for the panel to open whenever a terminal opens, including editor-integrated terminals (VS Code, Cursor). Done by appending `source "$HOME/Desktop/pc_monitor/shell_autostart.sh"` to the end of `~/.bashrc` (after the pixi PATH line, which it needs).
 - Guarded to interactive shells with `$DISPLAY`: Claude Code's Bash tool and scripts are non-interactive, SSH has no DISPLAY, so neither spawns a panel. The `systemctl --user is-active` check costs ~10 ms per terminal; `pixi run start` only runs when the panel is down, backgrounded in a subshell so the prompt is not delayed.

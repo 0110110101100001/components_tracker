@@ -1,7 +1,7 @@
 # PC monitor panel settings.
 
 refresh_seconds: 1.0        # how often the figures update [s]
-disk_mount: /               # filesystem whose fill level the "disk" row shows
+disk_mount: /               # filesystem whose fill level the "disk" row shows (Windows: / = current drive, or e.g. D:/)
 busy_core_percent: 50       # a core counts as busy in the "cores" row from this load up [%]
 
 # Row colour: green below amber, amber below red, red from there up.

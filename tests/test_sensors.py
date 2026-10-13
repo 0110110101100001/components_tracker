@@ -56,6 +56,11 @@ def test_cores_row_counts_cores_from_threshold_up():
     assert rows["cores"] == ("4 / 4", "red")
 
 
+def test_unreported_gpu_power_is_a_muted_dash():
+    gpu = sample()["gpu"] | {"power": None}
+    assert sensors.rows(sample(gpu=gpu), CONFIG)["gpu_power"] == ("—", "muted")
+
+
 def test_rows_without_gpu_are_muted_dashes():
     rows = sensors.rows(sample(gpu=None), CONFIG)
     assert rows["gpu"] == rows["vram"] == rows["gpu_power"] == ("—", "muted")
@@ -78,3 +83,12 @@ def test_sampler_reads_this_machine():
     rows = sensors.rows(sampler.sample(), CONFIG)
     assert set(rows) == {"cpu", "cores", "ram", "disk", "disk_io", "net",
                          "gpu", "vram", "gpu_power"}
+
+
+def test_failed_gpu_read_blanks_the_sample(monkeypatch):
+    class FailingGpu:
+        def read(self):
+            raise sensors.pynvml.NVMLError_Unknown()
+
+    monkeypatch.setattr(sensors, "open_gpu", FailingGpu)
+    assert sensors.Sampler("/").sample()["gpu"] is None

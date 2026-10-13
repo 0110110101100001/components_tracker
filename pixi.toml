@@ -3,7 +3,7 @@ name = "pc-monitor"
 version = "0.1.0"
 description = "Always-on-top GTK panel showing how loaded each PC component is"
 channels = ["conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "win-64"]
 
 [dependencies]
 python = "3.14.*"
@@ -11,22 +11,39 @@ pygobject = ">=3.56"
 gtk3 = ">=3.24"
 adwaita-icon-theme = "*"
 librsvg = "*"                   # draws the row icons
-gsettings-desktop-schemas = "*"
 psutil = "*"
 nvidia-ml-py = "*"
 pyyaml = "*"
 pytest = "*"
 
-[activation.env]
+[target.linux-64.dependencies]
+# GTK looks up org.gtk.Settings through these; there is no win-64 build and none
+# is needed, GDK's win32 backend reads desktop settings from the registry.
+gsettings-desktop-schemas = "*"
+
+[target.win-64.dependencies]
+# Same pin as the token tracker: Smart App Control blocks the newest epoxy-0.dll
+# (no reputation yet) and GDK cannot load without it. 1.5.10 is the newest
+# upstream, so the older build revision costs no library fixes.
+epoxy = { version = "==1.5.10", build = "*_1" }
+
+[target.linux-64.activation.env]
 # The panel places and raises itself, which a pure Wayland client may not do.
+# Linux only: on Windows the only GDK backend is win32.
 GDK_BACKEND = "x11"
 
 [tasks]
 panel = "python widget.py"                       # run the panel in the foreground (Ctrl+C to stop)
+smoke-test = "pytest -q tests"                   # unit tests + off-screen render of the panel
+restart = { depends-on = ["stop", "start"] }     # stop, then start again
+
+[target.linux-64.tasks]
 start = "systemd-run --user --collect --quiet --unit=pc-monitor --setenv=DISPLAY --setenv=XAUTHORITY --setenv=GDK_BACKEND $PIXI_EXE run --manifest-path $PIXI_PROJECT_MANIFEST panel"  # start detached; refuses if already running
 stop = "systemctl --user stop pc-monitor"        # close a detached panel
-restart = { depends-on = ["stop", "start"] }     # stop, then start again
-smoke-test = "pytest -q tests"                   # unit tests + off-screen render of the panel
+
+[target.win-64.tasks]
+start = "python winpanel.py start"               # start detached (pythonw, no console); refuses if already running
+stop = "python winpanel.py stop"                 # close a detached panel
 
 # Examples:
 #   pixi run start        # open the panel, it survives closing the terminal
