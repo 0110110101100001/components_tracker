@@ -44,6 +44,8 @@ stop = "systemctl --user stop pc-monitor"        # close a detached panel
 [target.win-64.tasks]
 start = "python winpanel.py start"               # start detached (pythonw, no console); refuses if already running
 stop = "python winpanel.py stop"                 # close a detached panel
+autostart = "python winpanel.py autostart"       # open the panel at every login (HKCU Run key)
+autostart-off = "python winpanel.py autostart-off"  # undo autostart
 
 # Examples:
 #   pixi run start        # open the panel, it survives closing the terminal

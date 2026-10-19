@@ -21,13 +21,16 @@ Every task is in `pixi.toml`. On Linux `start`/`stop` go through a systemd user 
 
 **Autostart (Linux):** `~/.bashrc` sources `shell_autostart.sh`, so opening any terminal (also inside VS Code / Cursor) opens the panel if it is not running. To turn it off, delete the `source …/shell_autostart.sh` line from `~/.bashrc`.
 
+**Autostart (Windows):** `pixi run autostart` opens the panel at every login (a `pc-monitor` value in `HKCU\…\CurrentVersion\Run` that runs `autostart.vbs`, i.e. `pixi run start` without a console window). `pixi run autostart-off` removes it; Task Manager → Startup can also disable it. Re-run `pixi run autostart` if the project folder or pixi moves.
+
 ## Structure
 
 ```
 config.yaml   refresh rate, disk to watch, colour thresholds
 sensors.py    reads the figures (psutil, NVML) and formats the rows
 widget.py     the GTK panel
-winpanel.py   Windows start/stop (what systemd does on Linux)
+winpanel.py   Windows start/stop (what systemd does on Linux) and login autostart
+autostart.vbs Windows login launcher, registered by `pixi run autostart`
 icons.py      the component icons (SVG) shown beside each row
 shell_autostart.sh  sourced from ~/.bashrc, opens the panel with each terminal
 tests/        unit tests + off-screen render of the panel
