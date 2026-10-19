@@ -3,17 +3,24 @@
 The running panel is found by its command line (a python naming this widget.py),
 not by a pid file: Windows reuses pids, and a stale file would block or kill the
 wrong process.
+
+Autostart is a value in the per-user Run key (listed, and can be disabled, in
+Task Manager > Startup) that opens the panel at login through autostart.vbs.
 """
 
 import os
 import subprocess
 import sys
+import winreg
 from pathlib import Path
 
 import psutil
 
 WIDGET = Path(__file__).resolve().with_name("widget.py")
 LOG_PATH = WIDGET.with_name("data") / "panel.log"
+LAUNCHER = WIDGET.with_name("autostart.vbs")
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_VALUE = "pc-monitor"
 # A panel that dies on startup (missing DLL, bad config) does so within this.
 STARTUP_SECONDS = 3
 
@@ -75,10 +82,37 @@ def stop():
     return 0
 
 
+def autostart_command():
+    # wscript, not cscript: a .vbs run by wscript has no console window.
+    # PIXI_EXE is set by `pixi run`; passed on so login needs no pixi on PATH.
+    wscript = Path(os.environ["SystemRoot"], "System32", "wscript.exe")
+    return f'"{wscript}" //B //Nologo "{LAUNCHER}" "{os.environ["PIXI_EXE"]}"'
+
+
+def autostart():
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+        winreg.SetValueEx(key, RUN_VALUE, 0, winreg.REG_SZ, autostart_command())
+    print(f"pc-monitor: opens at login (HKCU\\{RUN_KEY}\\{RUN_VALUE})")
+    return 0
+
+
+def autostart_off():
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0,
+                            winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, RUN_VALUE)
+    except FileNotFoundError:
+        print("pc-monitor: autostart was not on")
+        return 0
+    print("pc-monitor: no longer opens at login")
+    return 0
+
+
 def main(argv):
-    commands = {"start": start, "stop": stop}
+    commands = {"start": start, "stop": stop,
+                "autostart": autostart, "autostart-off": autostart_off}
     if len(argv) != 2 or argv[1] not in commands:
-        print(f"usage: {argv[0]} start|stop", file=sys.stderr)
+        print(f"usage: {argv[0]} {'|'.join(commands)}", file=sys.stderr)
         return 2
     return commands[argv[1]]()
 
