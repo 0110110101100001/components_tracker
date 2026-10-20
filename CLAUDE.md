@@ -16,6 +16,11 @@ Sibling of `~/Desktop/token_tracker` (the Claude cost meter). The user asked for
 - Windows autostart (added 2026-10-19): at **login**, not per terminal like Linux (chosen as the recommended option, the user did not pick; the Linux hook needs systemd + DISPLAY). `pixi run autostart` writes the `pc-monitor` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (stdlib `winreg`, no PowerShell/pywin32): `wscript //B autostart.vbs "<PIXI_EXE>"`. The .vbs runs `pixi run start` with window style 0 (hidden console), so pixi activation and `winpanel.py`'s already-running check still apply. pixi's full path is baked in from `PIXI_EXE` so login does not depend on PATH; re-run after moving the folder or pixi. `autostart-off` deletes the value.
 - Verified 2026-10-19: Run-key command starts the panel with pixi stripped from PATH; run again with the panel up → still one panel; off/off/on behaves.
 
+## resurrect (added 2026-10-20)
+- `pixi run resurrect`, same name and meaning as in the token tracker: stop the panel (off-screen / stuck) and open a fresh one, also when none was running. No pid/lock checks like the tracker's `kill.py` — this project has neither; Windows finds the panel by command line (`winpanel.py resurrect` = stop, then start; stop already waits for the process to exit), Linux ignores the failing `systemctl stop` on an unloaded unit and then runs `start`.
+- The old `restart` (`depends-on = [stop, start]`) never started anything on Linux when the unit was not loaded (stop exits non-zero, pixi aborts). Kept as an alias of `resurrect`.
+- Verified on Windows only: running → new pid; again → new pid; after stop → started; `restart` same. The Linux task is untested.
+
 ## Autostart (added 2026-10-12)
 - User asked for the panel to open whenever a terminal opens, including editor-integrated terminals (VS Code, Cursor). Done by appending `source "$HOME/Desktop/pc_monitor/shell_autostart.sh"` to the end of `~/.bashrc` (after the pixi PATH line, which it needs).
 - Guarded to interactive shells with `$DISPLAY`: Claude Code's Bash tool and scripts are non-interactive, SSH has no DISPLAY, so neither spawns a panel. The `systemctl --user is-active` check costs ~10 ms per terminal; `pixi run start` only runs when the panel is down, backgrounded in a subshell so the prompt is not delayed.

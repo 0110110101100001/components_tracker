@@ -14,6 +14,7 @@ pixi run smoke-test
 ```bash
 pixi run start     # open the panel (survives closing the terminal)
 pixi run stop      # close it
+pixi run resurrect # stop it and open a fresh one (panel off-screen or stuck; also works when none runs)
 pixi run panel     # foreground, to see errors
 ```
 
