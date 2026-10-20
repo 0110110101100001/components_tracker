@@ -35,20 +35,24 @@ GDK_BACKEND = "x11"
 [tasks]
 panel = "python widget.py"                       # run the panel in the foreground (Ctrl+C to stop)
 smoke-test = "pytest -q tests"                   # unit tests + off-screen render of the panel
-restart = { depends-on = ["stop", "start"] }     # stop, then start again
+restart = { depends-on = ["resurrect"] }         # old name of `resurrect`, kept so it keeps working
 
 [target.linux-64.tasks]
 start = "systemd-run --user --collect --quiet --unit=pc-monitor --setenv=DISPLAY --setenv=XAUTHORITY --setenv=GDK_BACKEND $PIXI_EXE run --manifest-path $PIXI_PROJECT_MANIFEST panel"  # start detached; refuses if already running
 stop = "systemctl --user stop pc-monitor"        # close a detached panel
+# Stop it (if it runs at all; `stop` fails on an unloaded unit) and open a fresh one.
+resurrect = "systemctl --user stop pc-monitor 2>/dev/null; $PIXI_EXE run --manifest-path $PIXI_PROJECT_MANIFEST start"
 
 [target.win-64.tasks]
 start = "python winpanel.py start"               # start detached (pythonw, no console); refuses if already running
 stop = "python winpanel.py stop"                 # close a detached panel
+resurrect = "python winpanel.py resurrect"       # stop it (if it runs at all) and open a fresh one
 autostart = "python winpanel.py autostart"       # open the panel at every login (HKCU Run key)
 autostart-off = "python winpanel.py autostart-off"  # undo autostart
 
 # Examples:
 #   pixi run start        # open the panel, it survives closing the terminal
 #   pixi run stop
+#   pixi run resurrect    # panel off-screen or stuck: stop it and open a fresh one
 #   pixi run panel        # foreground, to see errors
 #   pixi run smoke-test

@@ -82,6 +82,12 @@ def stop():
     return 0
 
 
+def resurrect():
+    """Stop whatever panel runs (off-screen, wedged, or none at all), then open a fresh one."""
+    stop()
+    return start()
+
+
 def autostart_command():
     # wscript, not cscript: a .vbs run by wscript has no console window.
     # PIXI_EXE is set by `pixi run`; passed on so login needs no pixi on PATH.
@@ -109,7 +115,7 @@ def autostart_off():
 
 
 def main(argv):
-    commands = {"start": start, "stop": stop,
+    commands = {"start": start, "stop": stop, "resurrect": resurrect,
                 "autostart": autostart, "autostart-off": autostart_off}
     if len(argv) != 2 or argv[1] not in commands:
         print(f"usage: {argv[0]} {'|'.join(commands)}", file=sys.stderr)
