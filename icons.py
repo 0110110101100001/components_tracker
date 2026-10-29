@@ -13,11 +13,11 @@ GPU = ('<path d="M2 4h1v15"/>'
 BOLT = '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'
 DISK = ('<rect x="2" y="13" width="20" height="8" rx="2"/>'
         '<path d="M5.5 13 8 4h8l2.5 9M6 17h6M17 17h.01"/>')
-NET = ('<rect x="3" y="3" width="18" height="18" rx="2"/>'
-       '<path d="M7 16v-6h2V8h6v2h2v6zM10 16v-2M12 16v-2M14 16v-2"/>')
+GLOBE = ('<circle cx="12" cy="12" r="10"/>'
+         '<path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>')
 
 ICONS = {"cpu": CPU, "cores": CPU, "ram": RAM, "gpu": GPU, "vram": RAM, "gpu_power": BOLT,
-         "disk": DISK, "disk_io": DISK, "net": NET}
+         "disk": DISK, "disk_io": DISK, "internet": GLOBE}
 
 
 def svg(name, colour):

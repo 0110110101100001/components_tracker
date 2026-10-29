@@ -33,6 +33,8 @@ def test_panel_renders_offscreen(monkeypatch, tmp_path):
     if not Gtk.init_check()[0]:
         pytest.skip("no display")
     monkeypatch.setattr(widget, "WINDOW_STATE_PATH", tmp_path / "window.json")
+    # No probes or speed test from a test run.
+    monkeypatch.setattr(widget.internet.Internet, "start", lambda self: None)
     panel = widget.PcMonitor(sensors.load_config())
     content = panel.get_child()
     panel.remove(content)

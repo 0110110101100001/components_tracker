@@ -13,14 +13,14 @@ MB = 1024 ** 2
 CONFIG_PATH = Path(__file__).with_name("config.yaml")
 # Sensor chip and label of the one CPU temperature worth showing, per vendor.
 CPU_TEMP_SENSORS = (("k10temp", "Tctl"), ("coretemp", "Package id 0"))
-# Loopback interface names (Linux, Windows); their traffic never leaves the PC.
-LOOPBACK = ("lo", "Loopback Pseudo-Interface 1")
 
 
 def load_config(path=CONFIG_PATH):
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
     if config["refresh_seconds"] <= 0:
         raise ValueError("refresh_seconds must be > 0")
+    if config["online_check_seconds"] <= 0 or config["speed_test_minutes"] <= 0:
+        raise ValueError("online_check_seconds and speed_test_minutes must be > 0")
     if not 0 < config["busy_core_percent"] <= 100:
         raise ValueError("busy_core_percent must be in (0, 100]")
     thresholds = {"load": config["load_thresholds"],
@@ -60,6 +60,14 @@ def fmt_fill_free(fill, free):
 
 def fmt_rates(first, second):
     return f"{first / MB:.1f} / {second / MB:.1f} MB/s"
+
+
+def fmt_mbits(down, up):
+    """Mbit/s without the unit: the internet row is full, the tooltip names it."""
+    def mbits(rate):
+        rate /= 1e6
+        return f"{rate:.1f}" if rate < 10 else f"{rate:.0f}"
+    return f"↓{mbits(down)} ↑{mbits(up)}"
 
 
 def cpu_temp():
@@ -112,12 +120,9 @@ def open_gpu():
 
 
 def io_counters():
-    """(time, disk read, disk write, net down, net up), cumulative bytes."""
+    """(time, disk read, disk write), cumulative bytes."""
     disk = psutil.disk_io_counters()
-    nics = psutil.net_io_counters(pernic=True)
-    down = sum(n.bytes_recv for name, n in nics.items() if name not in LOOPBACK)
-    up = sum(n.bytes_sent for name, n in nics.items() if name not in LOOPBACK)
-    return time.monotonic(), disk.read_bytes, disk.write_bytes, down, up
+    return time.monotonic(), disk.read_bytes, disk.write_bytes
 
 
 def rates(before, after):
@@ -127,10 +132,14 @@ def rates(before, after):
 
 
 class Sampler:
-    """Remembers the previous counters, so rates and CPU load are per interval."""
+    """Remembers the previous counters, so rates and CPU load are per interval.
 
-    def __init__(self, disk_mount):
+    `internet` is an internet.Internet; its latest results join every sample.
+    """
+
+    def __init__(self, disk_mount, internet):
         self.disk_mount = disk_mount
+        self.internet = internet
         self.gpu = open_gpu()
         # The first calls have no interval to measure and return 0.
         psutil.cpu_percent()
@@ -139,7 +148,7 @@ class Sampler:
 
     def sample(self):
         counters = io_counters()
-        disk_read, disk_write, net_down, net_up = rates(self.counters, counters)
+        disk_read, disk_write = rates(self.counters, counters)
         self.counters = counters
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage(self.disk_mount)
@@ -153,9 +162,8 @@ class Sampler:
             "disk_free": disk.free,
             "disk_read": disk_read,
             "disk_write": disk_write,
-            "net_down": net_down,
-            "net_up": net_up,
             "gpu": self.read_gpu(),
+            **self.internet.state(),
         }
 
     def read_gpu(self):
@@ -170,6 +178,18 @@ class Sampler:
             return self.gpu.read()
         except pynvml.NVMLError:
             return None
+
+
+def internet_row(sample):
+    if sample["online"] is None:
+        return "…", "muted"
+    if not sample["online"] or sample["stalled"]:
+        return "offline", "offline"
+    latency = f"{sample['latency']:.0f} ms"
+    # Green already says online, so the word gives way to the last speed test.
+    if sample["speed"] is None:
+        return f"online · {latency}", "green"
+    return f"{fmt_mbits(*sample['speed'])} · {latency}", "green"
 
 
 def rows(sample, config):
@@ -188,7 +208,7 @@ def rows(sample, config):
         "disk": (fmt_fill_free(sample["disk_fill"], sample["disk_free"]),
                  level(sample["disk_fill"], load_t)),
         "disk_io": (fmt_rates(sample["disk_read"], sample["disk_write"]), "plain"),
-        "net": (fmt_rates(sample["net_down"], sample["net_up"]), "plain"),
+        "internet": internet_row(sample),
     }
     gpu = sample["gpu"]
     if gpu is None:
