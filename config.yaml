@@ -3,6 +3,8 @@
 refresh_seconds: 1.0        # how often the figures update [s]
 disk_mount: /               # filesystem whose fill level the "disk" row shows (Windows: / = current drive, or e.g. D:/)
 busy_core_percent: 50       # a core counts as busy in the "cores" row from this load up [%]
+online_check_seconds: 5     # how often the "internet" row checks the connection [s]
+speed_test_minutes: 30      # how often the "internet" row runs a speed test (~4 s download + up to ~1 s upload) [min]
 
 # Row colour: green below amber, amber below red, red from there up.
 load_thresholds: {amber: 60, red: 85}          # load / fill level [%]

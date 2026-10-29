@@ -3,6 +3,7 @@
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import gi
@@ -14,6 +15,7 @@ gi.require_version("Rsvg", "2.0")
 from gi.repository import Gdk, GLib, Gtk, Pango, Rsvg  # noqa: E402
 
 import icons  # noqa: E402
+import internet  # noqa: E402
 import sensors  # noqa: E402
 
 WINDOW_STATE_PATH = Path(__file__).with_name("data") / "window.json"
@@ -39,8 +41,9 @@ ACCENT = "#4fb3bf"
 # (row key, caption); None is a separator.
 ROWS = (("cpu", "cpu"), ("cores", "cores"), ("ram", "ram"), None,
         ("gpu", "gpu"), ("vram", "vram"), ("gpu_power", "gpu power"), None,
-        ("disk", "disk"), ("disk_io", "disk r/w"), ("net", "net ↓/↑"))
-COLOUR_CLASSES = ("green", "amber", "red", "muted")
+        ("disk", "disk"), ("disk_io", "disk r/w"), None,
+        ("internet", "internet"))
+COLOUR_CLASSES = ("green", "amber", "red", "muted", "offline")
 
 # Font size is set per label through Pango attributes, not here: a reloaded
 # CssProvider restyles nothing that already exists, so a resize would not reach it.
@@ -53,6 +56,8 @@ label.muted { color: #8a8a92; }
 label.green { color: #78d178; }
 label.amber { color: #e3b341; }
 label.red { color: #f06a5a; }
+label.offline { color: #f06a5a; animation: pulse 0.8s ease-in-out infinite alternate; }
+@keyframes pulse { to { color: #5c2620; } }
 menu { background-color: #ffffff; }
 menu label { color: #000000; }
 menu menuitem:hover { background-color: #d5d5da; }
@@ -181,7 +186,10 @@ class PcMonitor(Gtk.Window):
     def __init__(self, config):
         super().__init__(title="PC monitor")
         self.config = config
-        self.sampler = sensors.Sampler(config["disk_mount"])
+        self.internet = internet.Internet(config["online_check_seconds"],
+                                          config["speed_test_minutes"])
+        self.internet.start()
+        self.sampler = sensors.Sampler(config["disk_mount"], self.internet)
         self.set_decorated(False)
         self.set_keep_above(True)
         self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
@@ -221,6 +229,7 @@ class PcMonitor(Gtk.Window):
 
         self.labels = []
         self.values = {}
+        self.colours = {}
         self.icons = []
         self.caption_boxes = []
         for index, row in enumerate(ROWS, start=2):
@@ -255,16 +264,32 @@ class PcMonitor(Gtk.Window):
         for key, (text, colour) in sensors.rows(sample, self.config).items():
             label = self.values[key]
             label.set_text(text)
+            # Only on a change: re-adding the class every refresh would restart
+            # the offline pulse each second.
+            if self.colours.get(key) == colour:
+                continue
+            self.colours[key] = colour
             context = label.get_style_context()
             for name in COLOUR_CLASSES:
                 context.remove_class(name)
             if colour != "plain":
                 context.add_class(colour)
+        self.values["internet"].set_tooltip_text(self.internet_tooltip())
         gpu = sample["gpu"]
         self.mark.set_loads((sample["cpu_load"],
                              100 * sample["ram_used"] / sample["ram_total"],
                              gpu["load"] if gpu else 0.0))
         return True
+
+    def internet_tooltip(self):
+        if self.internet.testing:
+            return "speed test running…"
+        if self.internet.stalled and self.internet.online:
+            return "connected, but the speed test got no data through"
+        if self.internet.speed_time is None:
+            return "no speed test yet"
+        return time.strftime("↓ download / ↑ upload in Mbit/s, measured %H:%M",
+                             time.localtime(self.internet.speed_time))
 
     def apply_scale(self, scale):
         """Scale text, spacing and width together; the rows decide the height."""
