@@ -44,7 +44,9 @@ ACCENT = "#4fb3bf"
 # "Frame has assigned frame counter but no frame drawn time"), and the panel
 # then shows one stale frame for good, e.g. "offline". Unmapping and remapping
 # the window ends that wait (verified on the frozen panel, 2026-11-04).
-FROZEN_SECONDS = 10.0
+# Counted in refreshes that asked for a paint and got none, not in seconds: a
+# main loop that was blocked, or a window that was hidden, is then no freeze.
+FROZEN_REFRESHES = 10
 
 # (row key, caption); None is a separator.
 ROWS = (("cpu", "cpu"), ("cores", "cores"), ("ram", "ram"), None,
@@ -134,11 +136,6 @@ def save_scale(scale):
     WINDOW_STATE_PATH.write_text(json.dumps({"scale": scale}))
 
 
-def redraw_frozen(now, drawn_at, recovered_at):
-    """True when nothing was painted for FROZEN_SECONDS, nor since the last remap."""
-    return now - max(drawn_at, recovered_at) > FROZEN_SECONDS
-
-
 class LoadMark(Gtk.DrawingArea):
     """Header mark: three bars showing CPU, RAM and GPU load live."""
 
@@ -223,7 +220,11 @@ class PcMonitor(Gtk.Window):
         self.connect("destroy", Gtk.main_quit)
         # Anchored to the top-right corner until the user drags the panel away.
         self.anchored = True
-        self.recovered_at = 0.0  # time.monotonic() of the last frozen-redraw remap
+        # Frozen-redraw check: refreshes in a row without a paint, the mark's
+        # paint time seen last, and whether this freeze was already logged.
+        self.unpainted = 0
+        self.seen_drawn_at = None
+        self.frozen = False
         self._resize = None
         self._cursor_name = None
 
@@ -296,27 +297,38 @@ class PcMonitor(Gtk.Window):
         self.mark.set_loads((sample["cpu_load"],
                              100 * sample["ram_used"] / sample["ram_total"],
                              gpu["load"] if gpu else 0.0))
-        self.check_redraw(time.monotonic())
+        self.check_redraw()
         return True
 
-    def check_redraw(self, now):
-        """Remap the panel when it has stopped painting (see FROZEN_SECONDS)."""
-        if not self.get_mapped():
-            return
+    def check_redraw(self):
+        """Remap the panel when it has stopped painting (see FROZEN_REFRESHES).
+
+        Runs at the end of every refresh, which has just queued a paint of the mark.
+        """
+        drawn_at, self.seen_drawn_at = self.seen_drawn_at, self.mark.drawn_at
         window = self.get_window()
-        if window is not None and window.get_state() & Gdk.WindowState.ICONIFIED:
+        if (not self.get_mapped() or drawn_at != self.mark.drawn_at
+                or (window is not None
+                    and window.get_state() & Gdk.WindowState.ICONIFIED)):
+            # Painted since the last refresh, or not expected to paint.
+            self.unpainted = 0
+            self.frozen = False
             return
-        if not redraw_frozen(now, self.mark.drawn_at, self.recovered_at):
+        self.unpainted += 1
+        if self.unpainted < FROZEN_REFRESHES:
             return
-        if self.mark.drawn_at > self.recovered_at:
-            # Once per freeze, not on every retry (e.g. while the screen is off).
-            print(f"pc-monitor: no repaint for {now - self.mark.drawn_at:.0f} s, "
+        if not self.frozen:
+            # Once per freeze, not on every retry.
+            print(f"pc-monitor: no repaint in {self.unpainted} refreshes, "
                   "remapping the window", file=sys.stderr)
-        self.recovered_at = now
+        self.frozen = True
+        self.unpainted = 0
         x, y = self.get_position()
         self.hide()
         self.move(x, y)
         self.show()
+        # Unmapping drops _NET_WM_STATE_ABOVE, and GTK does not set it again.
+        self.set_keep_above(True)
 
     def internet_tooltip(self):
         if self.internet.testing:
