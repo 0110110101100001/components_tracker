@@ -58,3 +58,10 @@ Sibling of `~/Desktop/token_tracker` (the Claude cost meter). The user asked for
 
 ## Open ideas (not built — YAGNI until asked)
 - Per-core / per-disk breakdown in tooltips, swap row, fan speeds.
+
+## Frozen redraw watchdog (added 2026-11-04)
+- Symptom: the user saw `internet offline` while online. The panel's state was right (AT-SPI read `↓98 ↑60 · 4 ms`), but the **window had not repainted for ~26 h**: two X captures 7 min apart were pixel-identical, still showing the frame from 2026-11-03 20:36, when Wi-Fi really was down.
+- Cause: GTK3 (X11 backend under XWayland) paints a frame, then waits for mutter's `_NET_WM_FRAME_DRAWN` before painting again. Mutter never sent it — journal: `gnome-shell: 0x600003 (PC monitor): Frame has assigned frame counter but no frame drawn time` at 20:35:43, amid a Wi-Fi reconnect and lid/suspend activity. The same message hit VLC on 2026-10-31, so it is a compositor issue, not ours.
+- Unmapping and remapping the window ends the wait (verified by doing it from outside on the frozen panel: it painted again at once).
+- Fix: `LoadMark.on_draw` stamps `drawn_at` (the mark is queued for redraw every refresh). `refresh` → `check_redraw`: mapped, not iconified, no paint for `FROZEN_SECONDS` (10) nor since the last remap → `hide()`, `move()` back to the same spot, `show()`. Logs `pc-monitor: no repaint for N s, remapping the window` once per freeze, retries every 10 s while it stays frozen (e.g. screen off — untested whether mutter stops frame-drawn replies then).
+- Not reproduced end-to-end in-process (the mutter bug cannot be triggered on demand); the in-process remap was checked on a test panel (same position, painting again within 1 s), and a healthy panel ran a minute without a false remap.
