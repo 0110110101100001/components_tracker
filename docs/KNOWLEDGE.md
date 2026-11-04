@@ -18,7 +18,11 @@ older notes per feature are in `CLAUDE.md`.
 - **Unmap + map unfreezes it.** Done from outside (GdkX11 foreign window
   `hide()`/`show()`), the frozen panel painted the current values at once.
 - **In-process remap keeps the position** and the window paints again within
-  1 s (test panel, `check_redraw(now + 60)`, 2026-11-04).
+  1 s (test panel, forced `check_redraw`, 2026-11-04).
+- **Remapping drops `_NET_WM_STATE_ABOVE`** (xprop before/after on a test
+  panel, 2026-11-04): without `set_keep_above(True)` after `show()` the panel
+  sinks behind other windows — the user saw it "vanish" after the first
+  watchdog version fired.
 - **A healthy panel does not trip the watchdog:** after the restart, 12 X
   captures over 60 s were all different and nothing was logged.
 - The internet probe and speed test themselves were fine during the
@@ -34,22 +38,26 @@ older notes per feature are in `CLAUDE.md`.
   only the picture was stale.
 - "`stalled` stuck true" — refuted by the AT-SPI tooltip (last test 22:16,
   normal green row).
+- A watchdog by seconds since the last paint — refuted 2026-11-04: it fired
+  `no repaint for 63 s` on a panel that was not frozen (the check itself had
+  not run for ~50 s, or the window was not shown; cause of the gap unknown),
+  right before GTK could paint. Now counted in refreshes without a paint.
 - A screenshot via X capture is not proof of what the panel *thinks*: it
   showed `offline` for the whole frozen period. Read AT-SPI as well.
 
 ## 3. Decisions
 
 - **2026-11-04, agent: watchdog that remaps a frozen window** (`check_redraw`
-  in `widget.py`, `FROZEN_SECONDS = 10`). Alternatives: run on native Wayland
-  (loses `move()`, the panel could not anchor or be dragged), restart the
-  process on a freeze (loses a dragged position and the current speed result),
-  disable frame sync (no public GTK3 switch). Consequence: a frozen panel shows
-  a stale frame for at most ~10–11 s; while it stays frozen (e.g. screen off,
-  if mutter stops replying then) it hides/shows every 10 s, one log line per
-  freeze. Wrong if: the journal shows `no repaint … remapping` while the panel
-  was visibly fine (false positives), or the panel stays frozen after the
-  remap (then the in-process remap does not reset GTK's wait — fall back to
-  re-exec of the process).
+  in `widget.py`, `FROZEN_REFRESHES = 10`), corrected the same evening (v1
+  counted seconds and lost keep-above; see §2 and §1). Alternatives: run on
+  native Wayland (loses `move()`, the panel could not anchor or be dragged),
+  restart the process on a freeze (loses a dragged position and the current
+  speed result), disable frame sync (no public GTK3 switch). Consequence: a
+  frozen panel shows a stale frame for ~10 refreshes; while it stays frozen
+  it hides/shows every 10 refreshes, one log line per freeze. Wrong if: the
+  journal shows `remapping` while the panel was visibly fine, the panel ends
+  up below other windows or off its spot after a remap, or it stays frozen
+  after the remap (then fall back to re-exec of the process).
 
 ## 4. Open questions and next step
 

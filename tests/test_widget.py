@@ -52,37 +52,60 @@ def test_panel_renders_offscreen(monkeypatch, tmp_path):
     pixbuf.savev(str(tmp_path / "panel.png"), "png", [], [])
 
 
-def test_redraw_frozen_after_quiet_spell():
-    assert not widget.redraw_frozen(now=105.0, drawn_at=100.0, recovered_at=0.0)
-    assert widget.redraw_frozen(now=100.0 + widget.FROZEN_SECONDS + 1, drawn_at=100.0,
-                                recovered_at=0.0)
-
-
-def test_redraw_frozen_waits_after_a_recovery():
-    # Just remapped: give the window time to paint before trying again.
-    assert not widget.redraw_frozen(now=200.0, drawn_at=100.0, recovered_at=195.0)
-    assert widget.redraw_frozen(now=195.0 + widget.FROZEN_SECONDS + 1, drawn_at=100.0,
-                                recovered_at=195.0)
-
-
-def test_frozen_panel_is_remapped_in_place(monkeypatch, tmp_path):
-    """A mapped panel that stopped painting is hidden and shown at the same spot."""
+@pytest.fixture
+def stubbed_panel(monkeypatch, tmp_path):
+    """A real panel whose window calls are recorded instead of reaching the WM."""
     if not Gtk.init_check()[0]:
         pytest.skip("no display")
     monkeypatch.setattr(widget, "WINDOW_STATE_PATH", tmp_path / "window.json")
     monkeypatch.setattr(widget.internet.Internet, "start", lambda self: None)
     panel = widget.PcMonitor(sensors.load_config())
-    calls = []
+    panel.calls = []
     monkeypatch.setattr(panel, "get_mapped", lambda: True)
     monkeypatch.setattr(panel, "get_position", lambda: (40, 50))
-    monkeypatch.setattr(panel, "hide", lambda: calls.append("hide"))
-    monkeypatch.setattr(panel, "move", lambda x, y: calls.append(("move", x, y)))
-    monkeypatch.setattr(panel, "show", lambda: calls.append("show"))
-    now = panel.mark.drawn_at + widget.FROZEN_SECONDS + 1
-    panel.check_redraw(now)
-    assert calls == ["hide", ("move", 40, 50), "show"]
-    panel.check_redraw(now + 1)  # backs off right after a recovery
-    assert len(calls) == 3
-    panel.mark.drawn_at = now + 2  # painting again: nothing to do
-    panel.check_redraw(now + 3)
-    assert len(calls) == 3
+    monkeypatch.setattr(panel, "hide", lambda: panel.calls.append("hide"))
+    monkeypatch.setattr(panel, "move", lambda x, y: panel.calls.append(("move", x, y)))
+    monkeypatch.setattr(panel, "show", lambda: panel.calls.append("show"))
+    monkeypatch.setattr(panel, "set_keep_above", lambda on: panel.calls.append(("above", on)))
+    return panel
+
+
+def tick(panel, times, painted=False):
+    for _ in range(times):
+        if painted:
+            panel.mark.drawn_at += 1
+        panel.check_redraw()
+
+
+def test_frozen_panel_is_remapped_in_place_and_stays_on_top(stubbed_panel):
+    """Remapping drops _NET_WM_STATE_ABOVE (seen 2026-11-04), so it is set again."""
+    tick(stubbed_panel, widget.FROZEN_REFRESHES)
+    assert stubbed_panel.calls == ["hide", ("move", 40, 50), "show", ("above", True)]
+
+
+def test_painting_panel_is_left_alone(stubbed_panel):
+    tick(stubbed_panel, 3 * widget.FROZEN_REFRESHES, painted=True)
+    assert stubbed_panel.calls == []
+
+
+def test_one_late_refresh_is_not_a_freeze(stubbed_panel):
+    """A main loop blocked for a minute is one late tick, then GTK paints."""
+    tick(stubbed_panel, 1)
+    tick(stubbed_panel, 1, painted=True)
+    tick(stubbed_panel, widget.FROZEN_REFRESHES - 1)
+    assert stubbed_panel.calls == []
+
+
+def test_hidden_spell_restarts_the_count(stubbed_panel, monkeypatch):
+    """No paint while unmapped is expected; the count starts again once shown."""
+    tick(stubbed_panel, widget.FROZEN_REFRESHES - 1)
+    monkeypatch.setattr(stubbed_panel, "get_mapped", lambda: False)
+    tick(stubbed_panel, 60)
+    monkeypatch.setattr(stubbed_panel, "get_mapped", lambda: True)
+    tick(stubbed_panel, widget.FROZEN_REFRESHES - 1)
+    assert stubbed_panel.calls == []
+
+
+def test_still_frozen_panel_is_retried(stubbed_panel):
+    tick(stubbed_panel, 2 * widget.FROZEN_REFRESHES)
+    assert stubbed_panel.calls.count("hide") == 2
